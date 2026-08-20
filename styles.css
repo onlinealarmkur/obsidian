@@ -1,0 +1,176 @@
+.online-alarm-timer-view .view-content {
+  padding: var(--size-4-4);
+}
+
+.online-alarm-timer-heading {
+  margin-block: 0 var(--size-4-3);
+  font-size: var(--font-ui-large);
+}
+
+.online-alarm-timer-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--size-4-1);
+  margin-bottom: var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.online-alarm-timer-tab {
+  border-radius: var(--button-radius) var(--button-radius) 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+}
+
+.online-alarm-timer-tab-active {
+  color: var(--text-normal);
+  border-bottom: 2px solid var(--interactive-accent);
+}
+
+.online-alarm-timer-form,
+.online-alarm-timer-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.online-alarm-timer-form {
+  gap: var(--size-4-3);
+}
+
+.online-alarm-timer-field label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.online-alarm-timer-field input {
+  width: 100%;
+}
+
+.online-alarm-timer-quick,
+.online-alarm-timer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+}
+
+.online-alarm-timer-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-small);
+}
+
+.online-alarm-timer-error:empty {
+  display: none;
+}
+
+.online-alarm-timer-help,
+.online-alarm-timer-limitation,
+.online-alarm-timer-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+}
+
+.online-alarm-timer-section {
+  margin-top: var(--size-4-6);
+}
+
+.online-alarm-timer-section h3 {
+  margin-block: 0 var(--size-4-3);
+  font-size: var(--font-ui-medium);
+}
+
+.online-alarm-timer-section-heading,
+.online-alarm-timer-card-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+}
+
+.online-alarm-timer-card-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.online-alarm-timer-card-summary .online-alarm-timer-type,
+.online-alarm-timer-card-summary .online-alarm-timer-state {
+  flex: 0 0 auto;
+}
+
+.online-alarm-timer-section-heading {
+  margin-bottom: var(--size-4-3);
+}
+
+.online-alarm-timer-section-heading h3 {
+  margin-block: 0;
+}
+
+.online-alarm-timer-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-3);
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.online-alarm-timer-show-more {
+  width: 100%;
+  margin-top: var(--size-4-1);
+}
+
+.online-alarm-timer-type,
+.online-alarm-timer-state,
+.online-alarm-timer-date {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.online-alarm-timer-remaining {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+}
+
+.online-alarm-timer-alert-label {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+}
+
+.online-alarm-timer-status {
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.online-alarm-timer-hidden {
+  display: none;
+}
+
+.online-alarm-timer-view button:focus-visible,
+.online-alarm-timer-alert-modal button:focus-visible,
+.online-alarm-timer-status:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 400px) {
+  .online-alarm-timer-actions button,
+  .online-alarm-timer-quick button {
+    min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .online-alarm-timer-view *,
+  .online-alarm-timer-alert-modal * {
+    scroll-behavior: auto;
+    transition-duration: 0s;
+  }
+}

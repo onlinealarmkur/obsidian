@@ -1,0 +1,281 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+concurrency:
+  group: release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify release tag belongs to the default branch
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$DEFAULT_BRANCH" ]]; then
+            echo "Repository default branch is unavailable." >&2
+            exit 1
+          fi
+
+          default_ref="refs/remotes/origin/${DEFAULT_BRANCH}"
+          if ! git show-ref --verify --quiet "$default_ref"; then
+            echo "Checked-out default branch ref is unavailable: $default_ref" >&2
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "${GITHUB_SHA}^{commit}" >/dev/null; then
+            echo "Tagged commit cannot be resolved: $GITHUB_SHA" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "$default_ref"; then
+            echo "Tagged commit $GITHUB_SHA is not on the default branch $DEFAULT_BRANCH." >&2
+            exit 1
+          fi
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Audit high-severity dependency vulnerabilities
+        run: npm run audit:dependencies
+      - name: Validate metadata, run checks, and build release assets
+        run: npm run check
+      - name: Upload release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-assets
+          path: |
+            main.js
+            manifest.json
+            styles.css
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Verify exact release assets
+        shell: bash
+        run: |
+          actual="$(find release-assets -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)"
+          expected="$(printf '%s\n' main.js manifest.json styles.css)"
+          test "$actual" = "$expected"
+          for asset in main.js manifest.json styles.css; do
+            test -f "release-assets/$asset"
+            test ! -L "release-assets/$asset"
+          done
+      - name: Publish complete immutable GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          readonly tag="$GITHUB_REF_NAME"
+          readonly repository="$GH_REPO"
+          readonly repository_owner="${repository%%/*}"
+          readonly repository_name="${repository#*/}"
+          readonly expected_assets_json='["main.js","manifest.json","styles.css"]'
+          temporary_directory="$(mktemp -d)"
+          readonly temporary_directory
+          readonly release_state_file="$temporary_directory/release-state.json"
+          readonly remote_assets_file="$temporary_directory/remote-assets.json"
+          trap 'rm -rf -- "$temporary_directory"' EXIT
+
+          if [[ ! "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unexpected release tag: $tag" >&2
+            exit 1
+          fi
+          if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "Unexpected repository identifier: $repository" >&2
+            exit 1
+          fi
+
+          query_release() {
+            gh api graphql \
+              -f "owner=$repository_owner" \
+              -f "name=$repository_name" \
+              -f "tagName=$tag" \
+              -f query='
+                query($owner: String!, $name: String!, $tagName: String!) {
+                  repository(owner: $owner, name: $name) {
+                    release(tagName: $tagName) {
+                      databaseId
+                      isDraft
+                    }
+                  }
+                }
+              ' >"$release_state_file"
+            jq -e '.data.repository != null' "$release_state_file" >/dev/null
+          }
+
+          require_release_id() {
+            local release_id
+            release_id="$(jq -r '.data.repository.release.databaseId // empty' "$release_state_file")"
+            if [[ ! "$release_id" =~ ^[0-9]+$ ]]; then
+              echo "Release database ID is unavailable or invalid." >&2
+              exit 1
+            fi
+            printf '%s\n' "$release_id"
+          }
+
+          assert_same_draft() {
+            local expected_release_id="$1"
+            local actual_release_id
+            query_release
+            actual_release_id="$(require_release_id)"
+            if [[ "$actual_release_id" != "$expected_release_id" ]]; then
+              echo "Release identity changed while publishing." >&2
+              exit 1
+            fi
+            if ! jq -e '.data.repository.release.isDraft == true' "$release_state_file" >/dev/null; then
+              echo "Refusing to upload to a published release." >&2
+              exit 1
+            fi
+          }
+
+          query_assets() {
+            local release_id="$1"
+            gh api --paginate --slurp \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${repository}/releases/${release_id}/assets?per_page=100" \
+              >"$remote_assets_file"
+            if ! jq -e '
+              type == "array"
+              and all(.[]; type == "array")
+              and all(.[][]; (.id | type == "number") and (.name | type == "string"))
+            ' "$remote_assets_file" >/dev/null; then
+              echo "GitHub returned an invalid release asset list." >&2
+              exit 1
+            fi
+          }
+
+          download_and_compare_asset() {
+            local asset_name="$1"
+            local asset_id
+            local remote_path="$temporary_directory/remote-$asset_name"
+            asset_id="$(
+              jq -r --arg name "$asset_name" \
+                '.[][] | select(.name == $name) | .id' \
+                "$remote_assets_file"
+            )"
+            if [[ ! "$asset_id" =~ ^[0-9]+$ ]]; then
+              echo "Remote asset ID is unavailable or invalid for $asset_name." >&2
+              exit 1
+            fi
+            gh api \
+              -H "Accept: application/octet-stream" \
+              "repos/${repository}/releases/assets/${asset_id}" \
+              >"$remote_path"
+            if ! cmp --silent -- "release-assets/$asset_name" "$remote_path"; then
+              echo "Remote draft asset differs from the built asset: $asset_name" >&2
+              exit 1
+            fi
+          }
+
+          # Stage 1: Query or create the exact draft release.
+          query_release
+          if jq -e '.data.repository.release == null' "$release_state_file" >/dev/null; then
+            gh release create "$tag" \
+              --repo "$repository" \
+              --draft \
+              --verify-tag \
+              --title "$tag" \
+              --generate-notes
+            query_release
+          fi
+          if ! jq -e '.data.repository.release.isDraft == true' "$release_state_file" >/dev/null; then
+            echo "Refusing to modify an existing published release." >&2
+            exit 1
+          fi
+          target_release_id="$(require_release_id)"
+          readonly target_release_id
+
+          # Stage 2: Resume only compatible assets, then upload missing assets.
+          query_assets "$target_release_id"
+          if ! jq -e --argjson expected "$expected_assets_json" '
+            [ .[][] | .name ] as $names
+            | ($names | length) == ($names | unique | length)
+              and all($names[]; . as $name | $expected | index($name) != null)
+          ' "$remote_assets_file" >/dev/null; then
+            echo "Draft contains an unexpected or duplicate release asset." >&2
+            exit 1
+          fi
+
+          for asset in main.js manifest.json styles.css; do
+            match_count="$(
+              jq --arg name "$asset" \
+                '[ .[][] | select(.name == $name) ] | length' \
+                "$remote_assets_file"
+            )"
+            case "$match_count" in
+              0)
+                assert_same_draft "$target_release_id"
+                gh release upload "$tag" \
+                  --repo "$repository" \
+                  "release-assets/$asset"
+                query_assets "$target_release_id"
+                ;;
+              1)
+                download_and_compare_asset "$asset"
+                ;;
+              *)
+                echo "Draft contains duplicate assets named $asset." >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          # Stage 3: Verify the complete remote name set and every remote byte.
+          query_assets "$target_release_id"
+          if ! jq -e --argjson expected "$expected_assets_json" '
+            ([ .[][] | .name ] | sort) == ($expected | sort)
+            and all(.[][]; .state == "uploaded")
+          ' "$remote_assets_file" >/dev/null; then
+            echo "Draft release assets are missing, duplicated, unexpected, or incomplete." >&2
+            exit 1
+          fi
+          for asset in main.js manifest.json styles.css; do
+            download_and_compare_asset "$asset"
+          done
+
+          # Stage 4: Publish only the verified draft, without recreating assets.
+          assert_same_draft "$target_release_id"
+          gh release edit "$tag" \
+            --repo "$repository" \
+            --draft=false
+          query_release
+          if ! jq -e \
+            --argjson releaseId "$target_release_id" \
+            '.data.repository.release.databaseId == $releaseId
+              and .data.repository.release.isDraft == false' \
+            "$release_state_file" >/dev/null; then
+            echo "Published release state could not be verified." >&2
+            exit 1
+          fi

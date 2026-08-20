@@ -1,0 +1,10 @@
+{
+  "id": "alarm-timer",
+  "name": "Alarm and Timer",
+  "version": "1.0.0",
+  "minAppVersion": "1.10.0",
+  "description": "Set one-time alarms for specific times and run multiple countdown timers from the sidebar.",
+  "author": "Burak Ozdemir",
+  "authorUrl": "https://onlinealarmkur.com/en/",
+  "isDesktopOnly": true
+}

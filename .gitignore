@@ -1,0 +1,25 @@
+node_modules/
+main.js
+*.js.map
+coverage/
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Local advisor artifacts
+plans/
+
+# Local release checklist. Follow it locally; do not publish it with the plugin.
+DEPLOY.md
+
+# Local AI/agent tooling. Not part of the published plugin.
+.claude/
+.cursor/
+.aider*
+.codex/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.github/copilot-instructions.md
