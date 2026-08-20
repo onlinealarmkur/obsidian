@@ -4,7 +4,7 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["main.js", "node_modules/", "coverage/"] },
+  { ignores: ["main.js", "node_modules/", "coverage/", "types/**/*.d.ts"] },
   eslint.configs.recommended,
   ...obsidianmd.configs.recommended,
   ...tseslint.configs.strictTypeChecked.map((config) => ({ ...config, files: ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts"] })),
@@ -30,13 +30,6 @@ export default tseslint.config(
     rules: {
       // Preserve the required product heading while keeping all other UI strings checked.
       "obsidianmd/ui/sentence-case": ["warn", { ignoreRegex: ["Alarm and Timer"] }]
-    }
-  },
-  {
-    files: ["src/ui/settings-tab.ts"],
-    rules: {
-      // Setting definitions require Obsidian 1.13, but this plugin supports 1.10.0.
-      "obsidianmd/settings-tab/prefer-setting-definitions": "off"
     }
   },
   {

@@ -18,6 +18,21 @@ import type { I18n } from "../i18n";
 import type { AudioPlaybackHandle, AudioService } from "../services/audio-service";
 import type { ItemService } from "../services/item-service";
 
+interface SearchableSettingDefinition {
+  name: string;
+  desc?: string;
+  searchable?: boolean;
+  render: (setting: Setting) => void;
+}
+
+interface SearchableSettingGroup {
+  type: "group";
+  heading: string;
+  items: SearchableSettingDefinition[];
+}
+
+type SearchableSettingItem = SearchableSettingDefinition | SearchableSettingGroup;
+
 export class AlarmTimerSettingTab extends PluginSettingTab {
   private readonly version: string;
   private notificationGeneration = 0;
@@ -39,132 +54,203 @@ export class AlarmTimerSettingTab extends PluginSettingTab {
     this.version = plugin.manifest.version;
   }
 
+  public override getSettingDefinitions(): SearchableSettingItem[] {
+    const { messages } = this.i18n;
+    return [
+      {
+        name: messages.defaultTimerDuration,
+        desc: messages.defaultTimerDurationDesc,
+        render: (setting) => {
+          setting.addText((text) => {
+            text.inputEl.type = "number";
+            text.inputEl.min = String(MIN_TIMER_MINUTES);
+            text.inputEl.max = String(MAX_TIMER_MINUTES);
+            text.inputEl.step = "1";
+            text.setValue(String(this.items.settings.defaultTimerMinutes)).onChange(async (value) => {
+              const parsed = Number(value);
+              const restore = (): void => { text.setValue(String(this.items.settings.defaultTimerMinutes)); };
+              if (!Number.isInteger(parsed) || parsed < MIN_TIMER_MINUTES || parsed > MAX_TIMER_MINUTES) {
+                restore();
+                return;
+              }
+              await this.persistSetting("defaultTimerMinutes", { defaultTimerMinutes: parsed }, restore);
+            });
+          });
+        }
+      },
+      {
+        name: messages.quickTimerDurations,
+        desc: messages.quickTimerDurationsDesc(MIN_TIMER_MINUTES, MAX_QUICK_TIMER_DURATIONS, MAX_TIMER_MINUTES),
+        render: (setting) => {
+          setting.addText((text) => {
+            const currentValue = (): string => this.items.settings.quickTimerMinutes.join(", ");
+            const commit = async (value: string): Promise<void> => {
+              const parsed = this.parseQuickTimerMinutes(value);
+              const restore = (): void => { text.setValue(currentValue()); };
+              if (parsed === undefined) {
+                restore();
+                new Notice(messages.quickTimerDurationsInvalid(MIN_TIMER_MINUTES, MAX_QUICK_TIMER_DURATIONS, MAX_TIMER_MINUTES));
+                return;
+              }
+              text.setValue(parsed.join(", "));
+              if (parsed.length === this.items.settings.quickTimerMinutes.length
+                && parsed.every((minutes, index) => minutes === this.items.settings.quickTimerMinutes[index])) return;
+              await this.persistSetting("quickTimerMinutes", { quickTimerMinutes: parsed }, restore);
+            };
+            text.setValue(currentValue()).onChange(async (value) => {
+              // A trailing separator is a normal intermediate state while entering
+              // another duration. Validate it only when the field loses focus.
+              if (/,[\s]*$/.test(value)) return;
+              await commit(value);
+            });
+            text.inputEl.addEventListener("blur", () => { void commit(text.inputEl.value); });
+          });
+        }
+      },
+      {
+        name: messages.use24HourTime,
+        desc: messages.use24HourTimeDesc,
+        render: (setting) => {
+          setting.addToggle((toggle) => toggle.setValue(this.items.settings.use24HourTime).onChange(async (value) => {
+            await this.persistSetting(
+              "use24HourTime",
+              { use24HourTime: value },
+              () => { toggle.setValue(this.items.settings.use24HourTime); }
+            );
+          }));
+        }
+      },
+      {
+        name: messages.showStatusBar,
+        desc: messages.showStatusBarDesc,
+        render: (setting) => {
+          setting.addToggle((toggle) => toggle.setValue(this.items.settings.showStatusBar).onChange(async (value) => {
+            await this.persistSetting(
+              "showStatusBar",
+              { showStatusBar: value },
+              () => { toggle.setValue(this.items.settings.showStatusBar); }
+            );
+          }));
+        }
+      },
+      {
+        name: "",
+        desc: messages.closedAppLimitation,
+        searchable: false,
+        render: () => undefined
+      },
+      {
+        type: "group",
+        heading: messages.alerts,
+        items: [
+          {
+            name: messages.enableSound,
+            desc: messages.enableSoundDesc,
+            render: (setting) => {
+              setting.addToggle((toggle) => toggle.setValue(this.items.settings.enableSound).onChange(async (value) => {
+                await this.persistSetting(
+                  "enableSound",
+                  { enableSound: value },
+                  () => { toggle.setValue(this.items.settings.enableSound); }
+                );
+              }));
+            }
+          },
+          {
+            name: messages.alertVolume,
+            desc: messages.alertVolumeDesc(MIN_VOLUME, MAX_VOLUME),
+            render: (setting) => {
+              setting.addSlider((slider) => slider.setLimits(MIN_VOLUME, MAX_VOLUME, 1)
+                .setValue(this.items.settings.volume).onChange(async (value) => {
+                await this.persistSetting(
+                  "volume",
+                  { volume: value },
+                  () => { slider.setValue(this.items.settings.volume); }
+                );
+              }));
+            }
+          },
+          {
+            name: messages.systemNotifications,
+            desc: messages.systemNotificationsDesc,
+            render: (setting) => {
+              setting.addToggle((toggle) => toggle.setValue(this.items.settings.enableSystemNotifications).onChange(async (value) => {
+                const generation = ++this.notificationGeneration;
+                const enabled = value ? await this.requestNotificationPermission() : false;
+                if (generation !== this.notificationGeneration) return;
+                toggle.setValue(enabled);
+                await this.persistSetting(
+                  "enableSystemNotifications",
+                  { enableSystemNotifications: enabled },
+                  () => { toggle.setValue(this.items.settings.enableSystemNotifications); }
+                );
+              }));
+            }
+          },
+          {
+            name: messages.overdueGracePeriod,
+            desc: messages.overdueGracePeriodDesc,
+            render: (setting) => {
+              setting.addText((text) => {
+                text.inputEl.type = "number";
+                text.inputEl.min = String(MIN_OVERDUE_GRACE_MINUTES);
+                text.inputEl.max = String(MAX_OVERDUE_GRACE_MINUTES);
+                text.inputEl.step = "1";
+                text.setValue(String(this.items.settings.overdueGraceMinutes)).onChange(async (value) => {
+                  const trimmed = value.trim();
+                  const parsed = Number(trimmed);
+                  const restore = (): void => { text.setValue(String(this.items.settings.overdueGraceMinutes)); };
+                  if (trimmed === "" || !Number.isInteger(parsed)
+                    || parsed < MIN_OVERDUE_GRACE_MINUTES || parsed > MAX_OVERDUE_GRACE_MINUTES) {
+                    restore();
+                    return;
+                  }
+                  await this.persistSetting("overdueGraceMinutes", { overdueGraceMinutes: parsed }, restore);
+                });
+              });
+            }
+          },
+          {
+            name: messages.testSound,
+            desc: messages.testSoundDesc,
+            render: (setting) => {
+              setting.addButton((button) => {
+                this.soundPreviewButton = button;
+                button.setButtonText(messages.testSound).onClick(() => this.toggleSoundPreview());
+              });
+              return () => { this.teardownSoundPreview(); };
+            }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: messages.about,
+        items: [
+          { name: messages.privacy, desc: messages.privacyDesc, render: () => undefined },
+          this.linkDefinition(messages.documentation, messages.documentationDesc, DOCUMENTATION_URL),
+          this.linkDefinition(messages.onlineAlarmClock, messages.onlineAlarmClockDesc, ALARM_URL),
+          this.linkDefinition(messages.onlineTimer, messages.onlineTimerDesc, TIMER_URL),
+          this.linkDefinition(messages.reportIssue, messages.reportIssueDesc, ISSUES_URL),
+          { name: messages.version, desc: this.version, render: () => undefined }
+        ]
+      }
+    ];
+  }
+
   public override display(): void {
     this.teardownSoundPreview();
     ++this.notificationGeneration;
     this.settingGenerations.clear();
-    const { containerEl } = this;
-    const { messages } = this.i18n;
-    containerEl.empty();
-    new Setting(containerEl)
-      .setName(messages.defaultTimerDuration)
-      .setDesc(messages.defaultTimerDurationDesc)
-      .addText((text) => {
-        text.inputEl.type = "number";
-        text.inputEl.min = String(MIN_TIMER_MINUTES);
-        text.inputEl.max = String(MAX_TIMER_MINUTES);
-        text.inputEl.step = "1";
-        text.setValue(String(this.items.settings.defaultTimerMinutes)).onChange(async (value) => {
-          const parsed = Number(value);
-          const restore = (): void => { text.setValue(String(this.items.settings.defaultTimerMinutes)); };
-          if (!Number.isInteger(parsed) || parsed < MIN_TIMER_MINUTES || parsed > MAX_TIMER_MINUTES) {
-            restore();
-            return;
-          }
-          await this.persistSetting("defaultTimerMinutes", { defaultTimerMinutes: parsed }, restore);
-        });
-      });
-    new Setting(containerEl)
-      .setName(messages.quickTimerDurations)
-      .setDesc(messages.quickTimerDurationsDesc(MIN_TIMER_MINUTES, MAX_QUICK_TIMER_DURATIONS, MAX_TIMER_MINUTES))
-      .addText((text) => {
-        const currentValue = (): string => this.items.settings.quickTimerMinutes.join(", ");
-        const commit = async (value: string): Promise<void> => {
-          const parsed = this.parseQuickTimerMinutes(value);
-          const restore = (): void => { text.setValue(currentValue()); };
-          if (parsed === undefined) {
-            restore();
-            new Notice(messages.quickTimerDurationsInvalid(MIN_TIMER_MINUTES, MAX_QUICK_TIMER_DURATIONS, MAX_TIMER_MINUTES));
-            return;
-          }
-          text.setValue(parsed.join(", "));
-          if (parsed.length === this.items.settings.quickTimerMinutes.length
-            && parsed.every((minutes, index) => minutes === this.items.settings.quickTimerMinutes[index])) return;
-          await this.persistSetting("quickTimerMinutes", { quickTimerMinutes: parsed }, restore);
-        };
-        text.setValue(currentValue()).onChange(async (value) => {
-          // A trailing separator is a normal intermediate state while entering
-          // another duration. Validate it only when the field loses focus.
-          if (/,[\s]*$/.test(value)) return;
-          await commit(value);
-        });
-        text.inputEl.addEventListener("blur", () => { void commit(text.inputEl.value); });
-      });
-    new Setting(containerEl).setName(messages.use24HourTime).setDesc(messages.use24HourTimeDesc).addToggle((toggle) =>
-      toggle.setValue(this.items.settings.use24HourTime).onChange(async (value) => {
-        await this.persistSetting(
-          "use24HourTime",
-          { use24HourTime: value },
-          () => { toggle.setValue(this.items.settings.use24HourTime); }
-        );
-      }));
-    new Setting(containerEl).setName(messages.showStatusBar).setDesc(messages.showStatusBarDesc).addToggle((toggle) =>
-      toggle.setValue(this.items.settings.showStatusBar).onChange(async (value) => {
-        await this.persistSetting(
-          "showStatusBar",
-          { showStatusBar: value },
-          () => { toggle.setValue(this.items.settings.showStatusBar); }
-        );
-      }));
-    new Setting(containerEl).setDesc(messages.closedAppLimitation);
-
-    new Setting(containerEl).setName(messages.alerts).setHeading();
-    new Setting(containerEl).setName(messages.enableSound).setDesc(messages.enableSoundDesc).addToggle((toggle) =>
-      toggle.setValue(this.items.settings.enableSound).onChange(async (value) => {
-        await this.persistSetting(
-          "enableSound",
-          { enableSound: value },
-          () => { toggle.setValue(this.items.settings.enableSound); }
-        );
-      }));
-    new Setting(containerEl).setName(messages.alertVolume).setDesc(messages.alertVolumeDesc(MIN_VOLUME, MAX_VOLUME)).addSlider((slider) =>
-      slider.setLimits(MIN_VOLUME, MAX_VOLUME, 1).setValue(this.items.settings.volume).onChange(async (value) => {
-        await this.persistSetting(
-          "volume",
-          { volume: value },
-          () => { slider.setValue(this.items.settings.volume); }
-        );
-      }));
-    new Setting(containerEl).setName(messages.systemNotifications).setDesc(messages.systemNotificationsDesc).addToggle((toggle) =>
-      toggle.setValue(this.items.settings.enableSystemNotifications).onChange(async (value) => {
-        const generation = ++this.notificationGeneration;
-        const enabled = value ? await this.requestNotificationPermission() : false;
-        if (generation !== this.notificationGeneration) return;
-        toggle.setValue(enabled);
-        await this.persistSetting(
-          "enableSystemNotifications",
-          { enableSystemNotifications: enabled },
-          () => { toggle.setValue(this.items.settings.enableSystemNotifications); }
-        );
-      }));
-    new Setting(containerEl).setName(messages.overdueGracePeriod).setDesc(messages.overdueGracePeriodDesc).addText((text) => {
-      text.inputEl.type = "number";
-      text.inputEl.min = String(MIN_OVERDUE_GRACE_MINUTES);
-      text.inputEl.max = String(MAX_OVERDUE_GRACE_MINUTES);
-      text.inputEl.step = "1";
-      text.setValue(String(this.items.settings.overdueGraceMinutes)).onChange(async (value) => {
-        const trimmed = value.trim();
-        const parsed = Number(trimmed);
-        const restore = (): void => { text.setValue(String(this.items.settings.overdueGraceMinutes)); };
-        if (trimmed === "" || !Number.isInteger(parsed) || parsed < MIN_OVERDUE_GRACE_MINUTES || parsed > MAX_OVERDUE_GRACE_MINUTES) {
-          restore();
-          return;
-        }
-        await this.persistSetting("overdueGraceMinutes", { overdueGraceMinutes: parsed }, restore);
-      });
-    });
-    new Setting(containerEl).setName(messages.testSound).setDesc(messages.testSoundDesc).addButton((button) => {
-      this.soundPreviewButton = button;
-      button.setButtonText(messages.testSound).onClick(() => this.toggleSoundPreview());
-    });
-
-    new Setting(containerEl).setName(messages.about).setHeading();
-    new Setting(containerEl).setName(messages.privacy).setDesc(messages.privacyDesc);
-    this.addLink(containerEl, messages.documentation, messages.documentationDesc, DOCUMENTATION_URL);
-    this.addLink(containerEl, messages.onlineAlarmClock, messages.onlineAlarmClockDesc, ALARM_URL);
-    this.addLink(containerEl, messages.onlineTimer, messages.onlineTimerDesc, TIMER_URL);
-    this.addLink(containerEl, messages.reportIssue, messages.reportIssueDesc, ISSUES_URL);
-    new Setting(containerEl).setName(messages.version).setDesc(this.version);
+    this.containerEl.empty();
+    for (const item of this.getSettingDefinitions()) {
+      if ("type" in item) {
+        new Setting(this.containerEl).setName(item.heading).setHeading();
+        for (const definition of item.items) this.renderLegacyDefinition(definition);
+      } else {
+        this.renderLegacyDefinition(item);
+      }
+    }
   }
 
   public override hide(): void {
@@ -174,10 +260,22 @@ export class AlarmTimerSettingTab extends PluginSettingTab {
     super.hide();
   }
 
-  private addLink(parent: HTMLElement, name: string, description: string, url: string): void {
-    new Setting(parent).setName(name).setDesc(description).addButton((button) => button.setButtonText(this.i18n.messages.open).onClick(() => {
-      window.open(url, "_blank", "noopener,noreferrer");
-    }));
+  private linkDefinition(name: string, desc: string, url: string): SearchableSettingDefinition {
+    return {
+      name,
+      desc,
+      render: (setting) => {
+        setting.addButton((button) => button.setButtonText(this.i18n.messages.open).onClick(() => {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }));
+      }
+    };
+  }
+
+  private renderLegacyDefinition(definition: SearchableSettingDefinition): void {
+    const setting = new Setting(this.containerEl).setName(definition.name);
+    if (definition.desc !== undefined) setting.setDesc(definition.desc);
+    definition.render(setting);
   }
 
   private parseQuickTimerMinutes(value: string): number[] | undefined {

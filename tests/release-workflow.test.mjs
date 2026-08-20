@@ -48,16 +48,18 @@ describe("GitHub Actions release hardening", () => {
     const sources = await Promise.all([workflow("audit.yml"), workflow("ci.yml"), workflow("release.yml")]);
     const uses = sources.flatMap((source) => source.match(/^\s*uses:.*$/gmu) ?? []);
 
-    expect(uses).toHaveLength(8);
+    expect(uses).toHaveLength(9);
     for (const line of uses) {
       expect(line).toMatch(/^\s*uses: actions\/[a-z-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/u);
     }
   });
 
-  it("builds with read-only contents and without persisted checkout credentials", async () => {
+  it("builds with narrowly scoped provenance permissions and without persisted checkout credentials", async () => {
     const { build } = releaseJobs(await workflow("release.yml"));
 
-    expect(build).toContain("permissions:\n      contents: read");
+    expect(build).toContain(
+      "permissions:\n      contents: read\n      id-token: write\n      attestations: write\n      artifact-metadata: write",
+    );
     expect(build).not.toContain("contents: write");
     expect(build).toContain("persist-credentials: false");
     expect(build).toContain("run: npm ci --legacy-peer-deps");
@@ -65,6 +67,23 @@ describe("GitHub Actions release hardening", () => {
     expect(build).toContain("run: npm run check");
     expect(build).toContain("name: release-assets");
     expect(build).toContain("path: |\n            main.js\n            manifest.json\n            styles.css");
+  });
+
+  it("attests the exact release assets after building and before uploading", async () => {
+    const { build } = releaseJobs(await workflow("release.yml"));
+    const attestation = namedStep(build, "Attest release assets");
+
+    expect(attestation).toContain(
+      "uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1",
+    );
+    expect(attestation).toContain(
+      "subject-path: |\n            main.js\n            manifest.json\n            styles.css",
+    );
+    expectOrdered(build, [
+      "      - name: Validate metadata, run checks, and build release assets",
+      "      - name: Attest release assets",
+      "      - name: Upload release assets",
+    ]);
   });
 
   it("proves the tagged commit belongs to the repository default branch before building", async () => {

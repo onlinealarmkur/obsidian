@@ -12,6 +12,7 @@ import {
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const temporaryRoots = [];
+const CURRENT_VERSION = "1.0.1";
 
 async function validMetadata() {
   return {
@@ -42,9 +43,9 @@ afterEach(async () => {
 
 describe("release metadata validator", () => {
   it("accepts the current release identity and exact asset allowlist", async () => {
-    await expect(validateReleaseMetadata({ projectRoot, tagName: "1.0.0" })).resolves.toEqual({
+    await expect(validateReleaseMetadata({ projectRoot, tagName: CURRENT_VERSION })).resolves.toEqual({
       id: "alarm-timer",
-      version: "1.0.0",
+      version: CURRENT_VERSION,
       assets: RELEASE_ASSETS
     });
   });
@@ -112,7 +113,7 @@ describe("release metadata validator", () => {
     ["rejects mobile compatibility", ({ manifest }) => { manifest.isDesktopOnly = false; }, "manifest.json isDesktopOnly must be the boolean true"],
     ["rejects a true-like desktop-only string", ({ manifest }) => { manifest.isDesktopOnly = "true"; }, "manifest.json isDesktopOnly must be the boolean true"],
     ["rejects missing desktop-only compatibility", ({ manifest }) => { delete manifest.isDesktopOnly; }, "manifest.json isDesktopOnly must be the boolean true"],
-    ["requires matching package and manifest versions", ({ packageJson }) => { packageJson.version = "1.0.1"; }, "package.json and manifest.json versions must match"],
+    ["requires matching package and manifest versions", ({ packageJson }) => { packageJson.version = "9.9.9"; }, "package.json and manifest.json versions must match"],
     ["rejects leading-v versions", ({ packageJson, manifest, versions }) => {
       packageJson.version = "v1.0.0";
       manifest.version = "v1.0.0";
@@ -143,8 +144,8 @@ describe("release metadata validator", () => {
     ["rejects malformed versions.json minimum-app values", ({ versions }) => {
       versions["2.0.0"] = "1.7";
     }, "versions.json minimum-app values must use numeric x.y.z format"],
-    ["requires a versions.json entry", ({ versions }) => { delete versions["1.0.0"]; }, "versions.json must contain an entry for 1.0.0"],
-    ["requires matching minimum app versions", ({ versions }) => { versions["1.0.0"] = "1.8.0"; }, "versions.json minimum app version for 1.0.0 must match manifest.json minAppVersion"],
+    ["requires a versions.json entry", ({ manifest, versions }) => { delete versions[manifest.version]; }, `versions.json must contain an entry for ${CURRENT_VERSION}`],
+    ["requires matching minimum app versions", ({ manifest, versions }) => { versions[manifest.version] = "1.8.0"; }, `versions.json minimum app version for ${CURRENT_VERSION} must match manifest.json minAppVersion`],
     ["requires the exact release asset allowlist", ({ packageJson }) => { packageJson.releaseAssets.push("data.json"); }, "Release assets must be exactly: main.js, manifest.json, styles.css"],
     ["requires main.js as the package entry", ({ packageJson }) => { packageJson.main = "dist/main.js"; }, "package.json main must be main.js"]
   ])("%s", async (_name, change, message) => {
@@ -166,7 +167,7 @@ describe("release metadata validator", () => {
     await expect(validateReleaseMetadata({
       projectRoot,
       environment: { GITHUB_REF_TYPE: "branch", GITHUB_REF_NAME: refName }
-    })).resolves.toMatchObject({ id: "alarm-timer", version: "1.0.0" });
+    })).resolves.toMatchObject({ id: "alarm-timer", version: CURRENT_VERSION });
   });
 
   it("validates GITHUB_REF_NAME when GitHub identifies the ref as a tag", async () => {

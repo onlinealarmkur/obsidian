@@ -135,6 +135,38 @@ describe("AlarmTimerSettingTab", () => {
     expect(requiredSetting("Version").description).toBe("9.8.7");
   });
 
+  it("declares the complete searchable surface for Obsidian 1.13 without rendering controls", () => {
+    const fixture = createFixture();
+    const definitions = fixture.tab.getSettingDefinitions();
+    const groups = definitions.filter((definition) => "type" in definition);
+    const searchableNames = definitions.flatMap((definition) => {
+      if ("type" in definition) return definition.items.map((item) => item.name);
+      return definition.searchable === false ? [] : [definition.name];
+    });
+
+    expect(groups.map((group) => group.heading)).toEqual(["Alerts", "About"]);
+    expect(searchableNames).toEqual([
+      "Default timer duration",
+      "Quick timer durations",
+      "Use 24-hour time",
+      "Show next item in status bar",
+      "Enable sound",
+      "Alert volume",
+      "System notifications",
+      "Overdue grace period",
+      "Test sound",
+      "Privacy",
+      "Documentation",
+      "Online alarm clock",
+      "Online timer",
+      "Report an issue",
+      "Version"
+    ]);
+    expect(getCreatedSettings()).toEqual([]);
+    expect(fixture.audioPreview).not.toHaveBeenCalled();
+    expect(fixture.updateSettings).not.toHaveBeenCalled();
+  });
+
   it("rejects a fractional default timer value and restores the saved integer", async () => {
     const fixture = createFixture();
     render(fixture.tab);
