@@ -7,11 +7,13 @@ export const RELEASE_ASSETS = Object.freeze(["main.js", "manifest.json", "styles
 export const REQUIRED_PUBLIC_ARTIFACTS = Object.freeze([
   "README.md",
   "LICENSE",
+  "screenshots/social-preview.png",
   "screenshots/alarm-view.png",
   "screenshots/timer-view.png",
   "screenshots/timer-alert.png"
 ]);
 const README_SCREENSHOTS = Object.freeze([
+  "screenshots/social-preview.png",
   "screenshots/alarm-view.png",
   "screenshots/timer-view.png",
   "screenshots/timer-alert.png"

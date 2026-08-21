@@ -377,7 +377,7 @@ describe("AlarmTimerSettingTab", () => {
   });
 
   it("targets documentation and issues in the intended GitHub repository", () => {
-    expect(REPOSITORY_URL).toBe("https://github.com/onlinealarmkur/obsidian");
+    expect(REPOSITORY_URL).toBe("https://github.com/onlinealarmkur/obsidian-alarm-timer");
     expect(DOCUMENTATION_URL).toBe(`${REPOSITORY_URL}#readme`);
     expect(ISSUES_URL).toBe(`${REPOSITORY_URL}/issues`);
   });

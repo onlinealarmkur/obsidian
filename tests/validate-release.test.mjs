@@ -50,7 +50,7 @@ describe("release metadata validator", () => {
     });
   });
 
-  it("keeps the canonical display name aligned while preserving technical identity", async () => {
+  it("keeps the plugin identity stable while using a contextual README heading", async () => {
     const { packageJson, manifest } = await validMetadata();
     const readme = await readFile(join(projectRoot, "README.md"), "utf8");
     expect({
@@ -66,7 +66,7 @@ describe("release metadata validator", () => {
       manifestTechnicalId: "alarm-timer",
       packageName: "alarm-timer"
     });
-    expect(readme.split(/\r?\n/u)[0]).toBe("# Alarm and Timer");
+    expect(readme.split(/\r?\n/u)[0]).toBe("# Alarm and Timer for Obsidian");
   });
 
   it("reports invalid JSON without echoing file content", async () => {
@@ -85,6 +85,7 @@ describe("release metadata validator", () => {
   });
 
   it.each([
+    "screenshots/social-preview.png",
     "screenshots/alarm-view.png",
     "screenshots/timer-view.png",
     "screenshots/timer-alert.png"
