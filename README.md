@@ -1,10 +1,10 @@
-# Alarm and Timer
+# Alarm and Timer for Obsidian
 
-Set one-time alarms and run multiple countdown timers without leaving Obsidian. Schedules use absolute timestamps, so sleeping or suspending the app never makes a countdown drift. Please note that alerts work only while Obsidian is running.
+Set alarms and run multiple countdown timers without leaving Obsidian. Schedules use absolute timestamps, so sleeping or suspending the app never makes a countdown drift. Please note that alerts work only while Obsidian is running.
 
 ## Features
 
-- One-time alarms with an optional date and label.
+- Alarms with an optional date and label.
 - As many countdown timers as you need, with pause, resume, restart, and cancel.
 - In-app alerts with an optional sound and optional system notifications.
 - A sidebar view, an optional status-bar countdown, and command-palette controls.
@@ -55,7 +55,7 @@ To install manually, download `main.js`, `manifest.json`, and `styles.css` from 
 - **No system notification:** check the operating-system permission, then re-enable **System notifications**. The in-app alert always remains.
 - **An item shows as Missed:** it came due while Obsidian was inactive for longer than the grace period.
 
-Something else? Report it on the [issue tracker](https://github.com/onlinealarmkur/obsidian/issues) with your Obsidian version, plugin version, and platform. Please report suspected security issues privately through [GitHub security advisories](https://github.com/onlinealarmkur/obsidian/security/advisories/new) instead of a public issue.
+Something else? Report it on the [issue tracker](https://github.com/onlinealarmkur/obsidian/issues) with your Obsidian version, plugin version, and platform.
 
 ## Privacy
 
